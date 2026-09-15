@@ -149,6 +149,28 @@ was untouched.
 Chats and messages persist (`chat`, `message` tables), so Recent is real and a
 roadmap can carry several conversations.
 
+## Grounding has to be demanded, not offered
+
+`google_search` is a tool the model may decline, and it frequently does — measured
+0 citations and 0 searches issued on two consecutive baseline runs of the same
+prompt, while the identical prompt with an explicit instruction to search returned
+29 and 19 citations. There is no SDK switch: `GoogleSearch` exposes no force flag
+(`blocking_confidence` is a phishing threshold), and `google_search_retrieval`'s
+dynamic threshold 400s on current models.
+
+So `SEARCH_MANDATE` is appended inside `llm.grounded()` itself — the one function
+every grounded call passes through — rather than in each call site, where it could
+be forgotten. `enrich.ensure` additionally retries a step that still comes back
+uncited, since nobody is watching the eager path.
+
+Effect on one 19-node roadmap, same nodes, details wiped between runs:
+
+    before   10/19 nodes cited,  87 citations
+    after    19/19 nodes cited, 389 citations
+
+Detail got longer, not shorter (208,683 chars vs ~190k), so the mandate is not
+trading substance for sourcing.
+
 ## Per-step research happens at creation, not on click
 
 `api/enrich.py` fills in every step's deep dive as part of the pipeline:

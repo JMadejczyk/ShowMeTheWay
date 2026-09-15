@@ -67,6 +67,13 @@ def ensure(nid, force=False):
             return {"detail": n["detail"], "sources": json.loads(n["sources"] or "[]")}
         r = store.get(n["roadmap_id"])
         text, srcs = deep_dive(n, r)
+        if not srcs:
+            # the mandate makes this rare, but on the eager path nobody is watching,
+            # so an uncited step would just quietly ship without sources
+            print(f"[enrich] {nid}: no citations, retrying once")
+            text2, srcs2 = deep_dive(n, r)
+            if srcs2:
+                text, srcs = text2, srcs2
         store.node_patch(nid, detail=text, sources=json.dumps(srcs))
         return {"detail": text, "sources": srcs}
 

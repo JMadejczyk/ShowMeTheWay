@@ -90,9 +90,26 @@ def best_model(role: str | None = None) -> str:
     return pick
 
 
-def grounded(prompt: str, urls: list[str] | None = None) -> tuple[str, list[dict]]:
+# The model treats google_search as optional and frequently answers from memory
+# instead — measured 0 citations and 0 searches on two consecutive baseline runs of
+# the same prompt. Saying so explicitly produced 29 and 19 citations on the same
+# prompt. There is no SDK switch for this: GoogleSearch exposes no force flag, and
+# google_search_retrieval's dynamic threshold 400s on current models. So the mandate
+# lives here, in the one function every grounded call goes through, rather than in
+# each call site where it could be forgotten.
+SEARCH_MANDATE = """
+
+MANDATORY: search before you answer. Verify every provider name, cost, exam code,
+body and date against current search results rather than recalling them. An answer
+written from memory is not acceptable here."""
+
+
+def grounded(prompt: str, urls: list[str] | None = None,
+             mandate: bool = True) -> tuple[str, list[dict]]:
     """Google Search grounding. Cannot be combined with response_schema — API forbids it."""
     urls = urls or []
+    if mandate:
+        prompt += SEARCH_MANDATE
     tools = [types.Tool(google_search=types.GoogleSearch())]
     if urls:
         tools.append(types.Tool(url_context=types.UrlContext()))
