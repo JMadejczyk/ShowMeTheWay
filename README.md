@@ -121,3 +121,30 @@ comparison sheet attached — every private fact reached the roadmap:
 `POST /api/profile` reads the attachments and returns both a first-person
 `background` for the pipeline and a one-line `summary` shown in chat, so the
 attachment visibly does something before the roadmap even generates.
+
+## Artifact as the primary object
+
+The roadmap is the durable thing; chats attach to it, not the reverse.
+
+    /workspace              Gemini chat — creates a roadmap, or talks to an existing one
+    /workspace/drive        Drive grid — artifacts alongside the same canned documents
+    /workspace/a/<id>       the artifact's own page, with the chats attached to it
+
+Rail order is New chat -> Recent (chats) -> Artifacts (roadmaps).
+
+`api/converse.py` is what makes an attached chat worth having:
+
+    START -> route -> (answer | search | mutate) -> save -> END
+
+A message is one of three things, costing very different amounts:
+  * answerable from the roadmap we already hold          (~6s)
+  * needs current world facts                            (~15s, grounded)
+  * news that changes the plan -> hands to REPLAN        (~25s, async)
+
+The third is the point. "I passed the numeracy exam and finished my theory hours"
+routes to mutate, picks the anchor node, and edits the roadmap — verified end to
+end: both claimed steps were retained and marked cleared, and everything upstream
+was untouched.
+
+Chats and messages persist (`chat`, `message` tables), so Recent is real and a
+roadmap can carry several conversations.

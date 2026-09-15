@@ -12,6 +12,7 @@ import store, llm
 from graph import GRAPH
 from replan import REPLAN
 from ask import ASK
+from converse import CONVERSE
 
 app = FastAPI(title="ShowMeTheWay")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -72,6 +73,20 @@ def health():
         "structure": llm.best_model("structure"),
         "available": llm.available(),
     }
+
+
+class NewChat(BaseModel):
+    roadmap_id: str | None = None
+    title: str = "New chat"
+
+class Say(BaseModel):
+    message: str
+    role: str = "u"
+    meta: dict = {}
+
+class Link(BaseModel):
+    roadmap_id: str
+    title: str | None = None
 
 
 class Profile(BaseModel):
@@ -170,6 +185,61 @@ def replan(rid: str, b: Replan):
 
     threading.Thread(target=work, daemon=True).start()
     return {"ok": True}
+
+
+# ---- chats. The artifact is the durable object; chats attach to it.
+
+@app.get("/api/chats")
+def chats(roadmap_id: str | None = None):
+    out = []
+    for c in store.chat_list(roadmap_id):
+        full = store.chat_get(c["id"])
+        out.append({**c, "n": len(full["messages"]),
+                    "preview": next((m["text"] for m in full["messages"] if m["role"] == "u"), "")})
+    return out
+
+@app.get("/api/chats/{cid}")
+def chat_one(cid: str):
+    return store.chat_get(cid) or {"error": "not found"}
+
+@app.post("/api/chats")
+def chat_new(b: NewChat):
+    return {"id": store.chat_create(b.title, b.roadmap_id)}
+
+@app.post("/api/chats/{cid}/link")
+def chat_link(cid: str, b: Link):
+    """Called once the creation chat has produced its roadmap."""
+    f = {"roadmap_id": b.roadmap_id}
+    if b.title:
+        f["title"] = b.title
+    store.chat_patch(cid, **f)
+    return {"ok": True}
+
+@app.post("/api/chats/{cid}/msg")
+def chat_msg(cid: str, b: Say):
+    """Persist a user message verbatim (used by the creation flow, which drives the
+    pipeline endpoints directly rather than going through the converse graph)."""
+    store.msg_add(cid, b.role, b.message, b.meta)
+    return {"ok": True}
+
+@app.post("/api/chats/{cid}/say")
+def chat_say(cid: str, b: Say):
+    """A message in a chat attached to an existing artifact."""
+    c = store.chat_get(cid)
+    if not c:
+        return {"error": "no chat"}
+    if not c["roadmap_id"]:
+        return {"error": "chat is not attached to a roadmap"}
+    store.msg_add(cid, "u", b.message)
+    try:
+        out = CONVERSE.invoke(
+            {"chat_id": cid, "roadmap_id": c["roadmap_id"], "message": b.message},
+            {"configurable": {"thread_id": f"{cid}:{int(time.time()*1000)}"}})
+    except Exception as e:
+        traceback.print_exc()
+        return {"error": str(e)}
+    return {"a": out.get("answer", ""), "sources": out.get("sources", []),
+            "intent": out.get("intent"), "replanning": bool(out.get("replanning"))}
 
 
 @app.post("/api/node")

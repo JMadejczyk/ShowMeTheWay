@@ -1,0 +1,36 @@
+.af{position:fixed;inset:0;display:flex;flex-direction:column;background:#fff;
+  font-family:"Google Sans","Product Sans",Roboto,Arial,system-ui,sans-serif;color:#1f1f1f}
+.af *{box-sizing:border-box}
+:where(.af button){font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.aftop{display:flex;align-items:center;gap:14px;padding:9px 16px;border-bottom:1px solid #e0e0e0;
+  flex-shrink:0}
+.aficon{width:38px;height:38px;border-radius:9px;background:#e8f0fe;color:#0b57d0;
+  display:grid;place-items:center;font-size:19px;cursor:pointer;flex-shrink:0}
+.aftitle{min-width:0;flex:1}
+.aftitle b{display:block;font-size:17px;font-weight:400;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.afmenu{display:flex;gap:15px;font-size:12.5px;color:#5f6368;margin-top:1px}
+.afmenu span{cursor:default}
+.afsaved{color:#188038;font-size:12.5px;white-space:nowrap}
+.afshare{background:#c2e7ff!important;border-radius:999px;padding:9px 20px;font-size:14px;
+  font-weight:500;color:#001d35;white-space:nowrap}
+.afbody{flex:1;display:flex;min-height:0}
+.afcanvas{flex:1;min-width:0;position:relative}
+.afside{width:308px;flex-shrink:0;border-left:1px solid #e0e0e0;padding:16px;overflow:auto;
+  background:#fff}
+.afstat{background:#f0f4f9;border-radius:10px;padding:11px 13px;font-size:13.5px;color:#3c4043}
+.afstat b{font-size:15px}
+.afsec{font-size:12.5px;color:#5f6368;font-weight:500;margin:20px 0 9px}
+.afchat{display:block;width:100%;text-align:left;border:1px solid #dadce0;border-radius:10px;
+  padding:11px 13px;margin-bottom:8px;background:#fff}
+.afchat:hover{background:#f8f9fa}
+.afchat b{display:block;font-size:13.5px;font-weight:500;margin-bottom:3px}
+.afchat span{display:block;font-size:12.5px;color:#5f6368;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.afchat .afn{font-size:11.5px;margin-top:4px;color:#80868b}
+.afempty{font-size:12.5px;color:#5f6368;line-height:1.55;margin-bottom:10px}
+.afnew{width:100%;background:#0b57d0!important;color:#fff!important;border-radius:999px;
+  padding:11px;font-size:13.5px;font-weight:500;margin-top:4px}
+.afsrc{display:block;font-size:12.5px;color:#0b57d0;text-decoration:none;padding:5px 0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:960px){ .afside{display:none} }

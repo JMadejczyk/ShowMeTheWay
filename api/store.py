@@ -26,6 +26,11 @@ def conn():
           summary TEXT, detail TEXT, sources TEXT, status TEXT, why_known TEXT,
           parent_id TEXT, ord INTEGER, x REAL, y REAL);
         CREATE TABLE IF NOT EXISTS edge(roadmap_id TEXT, src TEXT, dst TEXT, kind TEXT);
+        CREATE TABLE IF NOT EXISTS chat(
+          id TEXT PRIMARY KEY, roadmap_id TEXT, title TEXT, created INTEGER);
+        CREATE TABLE IF NOT EXISTS message(
+          id TEXT PRIMARY KEY, chat_id TEXT, role TEXT, text TEXT, meta TEXT,
+          created INTEGER);
         CREATE TABLE IF NOT EXISTS qa(
           id TEXT PRIMARY KEY, roadmap_id TEXT, node_id TEXT, q TEXT, a TEXT,
           sources TEXT, grounded INTEGER, created INTEGER);
@@ -106,5 +111,45 @@ def qa_add(rid, nid, q, a, sources, grounded):
     conn().execute("INSERT INTO qa VALUES (?,?,?,?,?,?,?,?)",
                    (i, rid, nid, q, a, json.dumps(sources), int(grounded),
                     int(time.time() * 1000)))
+    conn().commit()
+    return i
+
+
+# ---- chats. A chat may exist before its roadmap (the one that creates it) or be
+# attached to an existing artifact afterwards. Artifact is the durable object.
+
+def chat_create(title="New chat", roadmap_id=None):
+    i = uid()
+    conn().execute("INSERT INTO chat VALUES (?,?,?,?)",
+                   (i, roadmap_id, title, int(time.time() * 1000)))
+    conn().commit()
+    return i
+
+def chat_patch(cid, **f):
+    if not f: return
+    conn().execute(f"UPDATE chat SET {','.join(k+'=?' for k in f)} WHERE id=?",
+                   (*f.values(), cid))
+    conn().commit()
+
+def chat_list(roadmap_id=None):
+    q = "SELECT * FROM chat"
+    a = ()
+    if roadmap_id:
+        q += " WHERE roadmap_id=?"
+        a = (roadmap_id,)
+    return [dict(r) for r in conn().execute(q + " ORDER BY created DESC", a)]
+
+def chat_get(cid):
+    r = conn().execute("SELECT * FROM chat WHERE id=?", (cid,)).fetchone()
+    if not r: return None
+    d = dict(r)
+    d["messages"] = [{**dict(m), "meta": jl(m["meta"], {})} for m in conn().execute(
+        "SELECT * FROM message WHERE chat_id=? ORDER BY created", (cid,))]
+    return d
+
+def msg_add(cid, role, text, meta=None):
+    i = uid()
+    conn().execute("INSERT INTO message VALUES (?,?,?,?,?,?)",
+                   (i, cid, role, text, json.dumps(meta or {}), int(time.time() * 1000)))
     conn().commit()
     return i

@@ -1,9 +1,11 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import './gemini.css';
 import { api } from '@/lib/api';
 import { ICON } from '@/lib/drive';
 import DrivePicker from '@/components/gemini/DrivePicker';
+import Rail from '@/components/gemini/Rail';
 import Artifact from '@/components/gemini/Artifact';
 
 const uid = () => Math.random().toString(36).slice(2);
@@ -18,14 +20,21 @@ const STAGE = {
   structuring: 'Shaping the roadmap around what you already know',
 };
 
-export default function Workspace() {
+export default function Page() {
+  return <Suspense fallback={<div className="g" />}><Workspace /></Suspense>;
+}
+
+function Workspace() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const chatId = params.get('chat');
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState('');
   const [att, setAtt] = useState([]);
   const [picker, setPicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(null);      // artifact roadmap id
-  const [saved, setSaved] = useState([]);
+  const [attached, setAttached] = useState(null);   // roadmap id when this chat has one
   const end = useRef(null);
 
   // flow state
@@ -33,10 +42,33 @@ export default function Workspace() {
 
   const push = m => setMsgs(x => [...x, { id: uid(), ...m }]);
   const patch = (id, f) => setMsgs(x => x.map(m => m.id === id ? { ...m, ...f } : m));
-  const refresh = () => api('/api/roadmaps').then(d => Array.isArray(d) && setSaved(d));
+  const cid = useRef(null);
+  const remember = (role, text, meta) =>
+    cid.current && api(`/api/chats/${cid.current}/msg`, { message: text, role, meta: meta || {} });
 
-  useEffect(() => { refresh(); }, []);
+  // Load an existing chat when ?chat= is present; otherwise start fresh.
+  useEffect(() => {
+    setMsgs([]); setOpen(null); setAttached(null); cid.current = chatId || null;
+    st.current = { phase: 'goal', goal: '', background: '', qs: [], qi: 0, answers: [], rid: null };
+    if (!chatId) return;
+    api('/api/chats/' + chatId).then(c => {
+      if (c.error) return;
+      setAttached(c.roadmap_id || null);
+      setMsgs((c.messages || []).map(m => ({
+        id: m.id, role: m.role, text: m.text, ...(m.meta || {}),
+      })));
+      if (c.roadmap_id) { st.current.phase = 'attached'; st.current.rid = c.roadmap_id; }
+    });
+  }, [chatId]);
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+
+  async function ensureChat(title) {
+    if (cid.current) return cid.current;
+    const c = await api('/api/chats', { title: title.slice(0, 60) });
+    cid.current = c.id;
+    router.replace('/workspace?chat=' + c.id, { scroll: false });
+    return c.id;
+  }
 
   async function startClarify() {
     const s = st.current;
@@ -75,6 +107,9 @@ export default function Workspace() {
         patch(tid, { thinking: false, stage: null, text: 'Generation failed: ' + d.error });
       } else {
         const known = d.nodes.filter(n => n.status === 'known').length;
+        api(`/api/chats/${cid.current}/link`, { roadmap_id: d.id, title: d.title });
+        setAttached(d.id);
+        st.current.phase = 'attached';
         patch(tid, {
           thinking: false, stage: null,
           text: `Done — ${d.nodes.length} steps.` + (known
@@ -82,6 +117,8 @@ export default function Workspace() {
             : ''),
           artifact: { id: d.id, title: d.title, n: d.nodes.length },
         });
+        remember('a', `Done — ${d.nodes.length} steps.`,
+          { artifact: { id: d.id, title: d.title, n: d.nodes.length } });
         setOpen(d.id);
         refresh();
       }
@@ -98,7 +135,33 @@ export default function Workspace() {
     setText(''); setBusy(true);
     const used = att; setAtt([]);
 
+    // a chat attached to an existing artifact: answer about it, or change it
+    if (s.phase === 'attached') {
+      const tid = uid();
+      setMsgs(x => [...x, { id: tid, role: 'a', thinking: true, text: 'Thinking…' }]);
+      const d = await api(`/api/chats/${cid.current}/say`, { message: body });
+      patch(tid, { thinking: false, text: d.a ?? ('Something went wrong: ' + (d.error || '')) });
+      if (d.replanning) {
+        const poll = setInterval(async () => {
+          const rmx = await api('/api/roadmaps/' + s.rid);
+          if (rmx.status === 'ready' || rmx.status === 'error') {
+            clearInterval(poll);
+            const kn = (rmx.nodes || []).filter(n => n.status === 'known' || n.status === 'done').length;
+            push({ role: 'a', text: rmx.status === 'error'
+              ? 'The update failed: ' + rmx.error
+              : `Roadmap updated — ${rmx.nodes.length} steps, ${kn} cleared.`,
+              artifact: { id: s.rid, title: rmx.title, n: rmx.nodes.length } });
+            setOpen(null); setTimeout(() => setOpen(s.rid), 60);
+          }
+        }, 2500);
+      }
+      setBusy(false);
+      return;
+    }
+
     if (s.phase === 'goal') {
+      await ensureChat(body);
+      remember('u', body);
       s.goal = body;
       if (used.length) {
         const tid = uid();
@@ -150,22 +213,7 @@ export default function Workspace() {
 
   return (
     <div className={"g" + (open ? " split" : "")}>
-      <div className="grail">
-        <button className="gburger">☰</button>
-        <button className="gnew" onClick={() => {
-          st.current = { phase: 'goal', goal: '', background: '', qs: [], qi: 0, answers: [], rid: null };
-          setMsgs([]); setOpen(null); setAtt([]);
-        }}>✏️ New chat</button>
-        <div className="gsec">Roadmaps</div>
-        {saved.map(r => (
-          <button key={r.id} className={'gitem' + (open === r.id ? ' on' : '')}
-            onClick={() => setOpen(r.id)} title={r.title}>◈ {r.title}</button>
-        ))}
-        {!saved.length && <div className="gitem" style={{ opacity: .55 }}>No roadmaps yet</div>}
-        <div className="gsec" style={{ marginTop: 10 }}>Recent</div>
-        <button className="gitem">Q1 planning notes</button>
-        <button className="gitem">Holiday itinerary</button>
-      </div>
+      <Rail activeChat={chatId} activeArtifact={open} />
 
       <div className="gmain">
         <div className="gcol">
