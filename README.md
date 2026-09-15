@@ -91,3 +91,33 @@ meant one request's `commit()` cleared another's implicit transaction, and the
 second `commit()` died with "cannot commit - no transaction is active" — reproduced
 by opening a node (30s deep-dive) and asking a question at the same time. WAL is on
 so reads don't block on writes.
+
+## Google Workspace shell (`/workspace`)
+
+A prototype Gemini skin over the same engine. Not affiliated with Google; built for
+presentation, kept local, never hosted.
+
+    /            the standalone app (unchanged)
+    /workspace   Gemini chat clone -> roadmap opens as a Canvas-style artifact
+
+The chat needed no new pipeline. `clarify` is already a LangGraph `interrupt()` —
+the graph pauses and waits for the user, which *is* a chat turn. Moving from a form
+to one-question-per-turn was a rendering change, not a redesign.
+
+### The Drive picker is a facade over a real path
+
+The connection is fake; the effect is not. `lib/drive.js` holds five documents with
+real text, and attaching one sends it through the same source adapter as a paste.
+Measured on a live run with a CV, an internal Trust RNDA policy, and a route
+comparison sheet attached — every private fact reached the roadmap:
+
+  * Annex 21 trainee pay banding      (only in the Trust policy)
+  * substantive-contract eligibility  (only in the Trust policy)
+  * DipHE is not a degree             (only in the CV)
+  * MSc route ruled out               (only in the route sheet)
+  * NHS Learning Support Fund         (only in the route sheet)
+  * cannot relocate                   (only in the career notes)
+
+`POST /api/profile` reads the attachments and returns both a first-person
+`background` for the pipeline and a one-line `summary` shown in chat, so the
+attachment visibly does something before the roadmap even generates.

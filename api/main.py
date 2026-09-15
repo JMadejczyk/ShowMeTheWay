@@ -74,6 +74,40 @@ def health():
     }
 
 
+class Profile(BaseModel):
+    docs: list = []          # [{name, text}]
+    goal: str = ""
+
+
+@app.post("/api/profile")
+def profile(b: Profile):
+    """Read attached documents and state, in the first person, what they say about
+    this person's starting point. Shown in chat the moment they attach a file, so
+    the attachment visibly does something before the roadmap even generates — and
+    the result is what we hand the pipeline as `background`."""
+    if not b.docs:
+        return {"background": "", "summary": ""}
+    blob = "\n\n".join(f"--- {d.get('name','doc')} ---\n{str(d.get('text',''))[:20000]}"
+                         for d in b.docs)
+    out = llm.structured(f"""These documents belong to someone working toward this goal:
+{b.goal or '(not yet stated)'}
+
+DOCUMENTS:
+{blob}
+
+Return:
+- background: a dense factual paragraph of what these documents establish about
+  their experience, qualifications and current position. Write it as the person
+  ("8 years as a paramedic, holds..."). State only what the documents support —
+  never infer a qualification that is not there. This is fed to a planner.
+- summary: one short friendly sentence acknowledging what you just read, addressed
+  to them ("I've read your CV — 8 years as a paramedic, ..."). Max 30 words.""",
+        {"type": "OBJECT",
+         "properties": {"background": {"type": "STRING"}, "summary": {"type": "STRING"}},
+         "required": ["background", "summary"]}, temperature=0.2)
+    return out
+
+
 @app.get("/api/roadmaps")
 def listing():
     return store.listing()
