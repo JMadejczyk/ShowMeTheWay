@@ -11,11 +11,17 @@ export default function Drawer({ node, onClose, onStatus, onReplan, replanning }
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [open, setOpen] = useState(false);
+  const [qa, setQa] = useState([]);
+  const [q, setQ] = useState('');
+  const [asking, setAsking] = useState(false);
 
   useEffect(() => {
     setDetail(null); setSources(node?.sources ?? []); setNote(''); setOpen(false);
+    setQa([]); setQ(''); setAsking(false);
     if (!node) return;
     let dead = false;
+    api('/api/node', { action: 'qa', id: node.id })
+      .then(d => { if (!dead && d.qa?.length) setQa(d.qa); });
     setBusy(true);
     api('/api/node', { action: 'detail', id: node.id }).then(d => {
       if (dead) return;
@@ -26,8 +32,23 @@ export default function Drawer({ node, onClose, onStatus, onReplan, replanning }
     return () => { dead = true; };
   }, [node?.id]);
 
+  async function ask(text) {
+    const question = (text ?? q).trim();
+    if (!question || asking) return;
+    setAsking(true); setQ('');
+    setQa(t => [...t, { id: 'pending', q: question, a: null }]);
+    const d = await api('/api/node', { action: 'ask', id: node.id, question });
+    setQa(t => t.filter(x => x.id !== 'pending').concat({
+      id: Math.random().toString(36).slice(2), q: question,
+      a: d.a ?? ('_' + (d.error ?? 'failed') + '_'),
+      sources: d.sources ?? [], grounded: d.grounded,
+    }));
+    setAsking(false);
+  }
+
   if (!node) return null;
   const cleared = node.status === 'known' || node.status === 'done';
+  const STARTERS = ['Why do I need this?', 'Can I skip it?', 'How long will this take me?'];
 
   return (
     <div className="drawer">
@@ -80,6 +101,42 @@ export default function Drawer({ node, onClose, onStatus, onReplan, replanning }
             </a>
           ))}
         </>}
+
+        {qa.length > 0 && <div className="thread">
+          {qa.map(x => (
+            <div key={x.id} className="qa">
+              <div className="qq">{x.q}</div>
+              {x.a === null
+                ? <div className="dim">Thinking…</div>
+                : <>
+                    <div className="aa" dangerouslySetInnerHTML={{ __html: marked.parse(x.a) }} />
+                    {(x.sources ?? []).length > 0 &&
+                      <div className="tag">searched the web · {x.sources.length} sources</div>}
+                    {(x.sources ?? []).slice(0, 4).map((s, i) => (
+                      <a className="src" key={i} href={s.url} target="_blank" rel="noreferrer">
+                        {s.title || s.url}<span>{s.url}</span>
+                      </a>
+                    ))}
+                  </>}
+            </div>
+          ))}
+        </div>}
+      </div>
+
+      <div className="askbar">
+        {qa.length === 0 && !asking && <div className="starters">
+          {STARTERS.map(t => (
+            <button key={t} className="chip" onClick={() => ask(t)}>{t}</button>
+          ))}
+        </div>}
+        <form className="askrow" onSubmit={e => { e.preventDefault(); ask(); }}>
+          <input type="text" value={q} disabled={asking}
+            onChange={e => setQ(e.target.value)}
+            placeholder={asking ? 'Thinking…' : 'Ask about this step…'} />
+          <button className="btn" type="submit" disabled={asking || !q.trim()}>
+            {asking ? '…' : 'Ask'}
+          </button>
+        </form>
       </div>
     </div>
   );

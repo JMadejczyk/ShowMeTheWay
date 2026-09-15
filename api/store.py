@@ -1,15 +1,22 @@
 """App data (roadmaps/nodes/edges). LangGraph checkpoints live in their own db."""
-import sqlite3, json, os, secrets, time
+import sqlite3, json, os, secrets, time, threading
 
 DB = os.path.join(os.path.dirname(__file__), "..", "data.db")
-_c = None
+
+# One connection PER THREAD. Sharing a single connection across the request
+# threadpool meant one request's commit() cleared another's implicit transaction,
+# and the second commit() then died with "no transaction is active". SQLite does
+# its own cross-connection locking; WAL lets reads proceed during a write.
+_local = threading.local()
 
 def conn():
-    global _c
-    if _c is None:
-        _c = sqlite3.connect(DB, check_same_thread=False)
-        _c.row_factory = sqlite3.Row
-        _c.executescript("""
+    c = getattr(_local, "c", None)
+    if c is None:
+        c = sqlite3.connect(DB, check_same_thread=False, timeout=30)
+        c.row_factory = sqlite3.Row
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=30000")
+        c.executescript("""
         CREATE TABLE IF NOT EXISTS roadmap(
           id TEXT PRIMARY KEY, title TEXT, goal TEXT, background TEXT,
           clarifications TEXT, questions TEXT, brief TEXT, sources TEXT,
@@ -19,9 +26,13 @@ def conn():
           summary TEXT, detail TEXT, sources TEXT, status TEXT, why_known TEXT,
           parent_id TEXT, ord INTEGER, x REAL, y REAL);
         CREATE TABLE IF NOT EXISTS edge(roadmap_id TEXT, src TEXT, dst TEXT, kind TEXT);
+        CREATE TABLE IF NOT EXISTS qa(
+          id TEXT PRIMARY KEY, roadmap_id TEXT, node_id TEXT, q TEXT, a TEXT,
+          sources TEXT, grounded INTEGER, created INTEGER);
         """)
-        _c.commit()
-    return _c
+        c.commit()
+        _local.c = c
+    return c
 
 uid = lambda: secrets.token_hex(4)
 jl  = lambda s, fb: (json.loads(s) if s else fb) or fb
@@ -84,3 +95,16 @@ def node_patch(nid, **f):
     conn().execute(f"UPDATE node SET {','.join(k+'=?' for k in f)} WHERE id=?",
                    (*f.values(), nid))
     conn().commit()
+
+
+def qa_for_node(nid):
+    return [{**dict(r), "sources": jl(r["sources"], [])} for r in conn().execute(
+        "SELECT * FROM qa WHERE node_id=? ORDER BY created", (nid,))]
+
+def qa_add(rid, nid, q, a, sources, grounded):
+    i = uid()
+    conn().execute("INSERT INTO qa VALUES (?,?,?,?,?,?,?,?)",
+                   (i, rid, nid, q, a, json.dumps(sources), int(grounded),
+                    int(time.time() * 1000)))
+    conn().commit()
+    return i

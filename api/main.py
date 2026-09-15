@@ -11,6 +11,7 @@ from langgraph.types import Command
 import store, llm
 from graph import GRAPH
 from replan import REPLAN
+from ask import ASK
 
 app = FastAPI(title="ShowMeTheWay")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -47,6 +48,7 @@ class Replan(BaseModel):
 class NodeAct(BaseModel):
     action: str
     id: str
+    question: str | None = None
     status: str | None = None
     x: float | None = None
     y: float | None = None
@@ -146,12 +148,16 @@ def node_act(b: NodeAct):
         store.node_patch(b.id, x=b.x, y=b.y)
         return {"ok": True}
 
+    if b.action == "qa":
+        return {"qa": store.qa_for_node(b.id)}
+
     if b.action == "detail":
         n = store.node(b.id)
         if not n:
             return {"error": "no node"}
         if n["detail"] and not b.force:
-            return {"detail": n["detail"], "sources": json.loads(n["sources"] or "[]")}
+            return {"detail": n["detail"], "sources": json.loads(n["sources"] or "[]"),
+                    "qa": store.qa_for_node(b.id)}
 
         r = store.get(n["roadmap_id"])
         text, srcs = llm.grounded(f"""Write a practical deep-dive for one step of someone's roadmap.
@@ -174,6 +180,24 @@ Take their stated background literally: do not credit them with any qualificatio
 degree or diploma they did not claim, and do not infer one from their job title.
 Be concrete and specific. No filler, no motivational padding.""")
         store.node_patch(b.id, detail=text, sources=json.dumps(srcs))
-        return {"detail": text, "sources": srcs}
+        return {"detail": text, "sources": srcs, "qa": store.qa_for_node(b.id)}
+
+    if b.action == "ask":
+        n = store.node(b.id)
+        if not n:
+            return {"error": "no node"}
+        q = (b.question or "").strip()
+        if not q:
+            return {"error": "empty question"}
+        try:
+            out = ASK.invoke(
+                {"roadmap_id": n["roadmap_id"], "node_id": b.id, "question": q},
+                {"configurable": {"thread_id": f"{b.id}:ask:{int(time.time()*1000)}"}})
+        except Exception as e:
+            traceback.print_exc()
+            return {"error": str(e)}
+        srcs = out.get("sources", [])
+        return {"q": q, "a": out.get("answer", ""), "sources": srcs,
+                "grounded": bool(srcs)}
 
     return {"error": "unknown action"}

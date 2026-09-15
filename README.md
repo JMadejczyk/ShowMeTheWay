@@ -13,6 +13,7 @@ user already knows.
 
     api/graph.py    LangGraph state machine — generation pipeline
     api/replan.py   LangGraph state machine — graph mutation ("I already know this")
+    api/ask.py      LangGraph state machine — per-node Q&A
     api/llm.py      Gemini calls (grounded search / structured JSON)
     api/sources.py  pluggable source adapters (web, paste, urls, files, drive)
     api/store.py    roadmap/node/edge sqlite
@@ -60,3 +61,33 @@ What makes it an edit rather than a regeneration:
 Known limits: a server restart kills in-flight worker threads. A boot sweep unsticks
 any roadmap left mid-flight, but the run itself isn't resumed — the LangGraph
 checkpoint is there to do it, that just isn't wired up.
+
+## Per-node Q&A
+
+Every node has an ask box. `api/ask.py`:
+
+    START -> route -> (answer | search) -> save -> END
+
+`route` exists because the two kinds of question cost very different amounts.
+"Can I skip this given my background?" is answerable from the node's researched
+notes plus the roadmap we're already holding — ~8s, no search. "What does it cost
+in 2026?" is not, and earns a grounded lookup — ~15s.
+
+The answer is given the goal, the background, the clarifying answers, this node's
+researched detail, the whole core spine, and the last few turns of this node's own
+thread — so it can say "you can skip this" and mean it.
+
+Threads persist per node. A question you asked is still there when you come back,
+which is the point of it not being a chat.
+
+The "searched the web" badge is driven by whether citations actually came back, not
+by which branch the router picked — the model can decline to call the tool, and
+labelling that answer web-backed would be a lie.
+
+## Concurrency
+
+`store.py` opens one sqlite connection **per thread**. A single shared connection
+meant one request's `commit()` cleared another's implicit transaction, and the
+second `commit()` died with "cannot commit - no transaction is active" — reproduced
+by opening a node (30s deep-dive) and asking a question at the same time. WAL is on
+so reads don't block on writes.
