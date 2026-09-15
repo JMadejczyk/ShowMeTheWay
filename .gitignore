@@ -1,0 +1,16 @@
+# js
+node_modules/
+.next/
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+
+# secrets
+.env.local
+.env
+
+# runtime state (app data + langgraph checkpoints)
+data.db*
+checkpoints.db*

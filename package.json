@@ -1,0 +1,19 @@
+{
+  "name": "showmetheway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3077",
+    "build": "next build",
+    "start": "next start -p 3077"
+  },
+  "dependencies": {
+    "next": "^15.5.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "@google/genai": "^1.20.0",
+    "@xyflow/react": "^12.8.4",
+    "marked": "^15.0.12"
+  }
+}
