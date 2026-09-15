@@ -161,13 +161,25 @@ has 20-30 nodes, so sequentially this is ten minutes. Therefore:
 
   * `persist` marks the roadmap ready BEFORE `enrich` runs, so the canvas still
     appears at the same ~65s it always did;
-  * enrichment then runs on a 5-worker pool behind it, core spine first, since
-    those are the nodes anyone actually clicks;
+  * enrichment then runs on a 20-worker pool behind it, core spine first, since
+    those are the nodes anyone actually clicks (`ENRICH_WORKERS` to tune);
   * a node clicked before its turn still generates on demand — one lock per node id
     means the eager pass and a click can never pay for the same generation twice.
 
-Measured on a fresh 23-node roadmap: ready at 65s, fully researched at 196s,
-211,366 chars of detail across 296 citations. Opening a node went from ~30s to 10ms.
+Measured on a fresh 23-node roadmap: ready at 65s, fully researched at 196s at 5
+workers, 49s at 20. Opening a node went from ~30s to 10ms.
+
+Concurrency measured, not guessed:
+
+  | load                                  | 5 workers | 20 workers        |
+  |---------------------------------------|-----------|-------------------|
+  | 23 nodes                              | 131s      | 49s               |
+  | 46 nodes, 2 roadmaps, 40 simultaneous | -         | 50s, 0 failures   |
+
+Wall clock barely moves between 23 and 46 nodes, so the ceiling is per-call latency
+(~45s), not throughput — Gemini took 40 concurrent grounded calls without a single
+rate-limit error. Threads, not asyncio: the work is I/O-bound on HTTPS and this
+composes with LangGraph's sync .invoke() and the sync sqlite layer unchanged.
 
 `enriched` / `enrich_total` on the roadmap drive a progress line in both artifact
 views; the UI keeps polling while they differ.

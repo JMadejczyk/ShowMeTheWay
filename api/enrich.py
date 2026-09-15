@@ -14,12 +14,16 @@ roadmap has 20-30 nodes — sequentially that is ten minutes. So:
 One lock per node id means the eager pass and a click on the same node cannot both
 pay for the same generation.
 """
-import json, threading
+import json, os, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
 import llm, store
 
-WORKERS = 5                       # concurrent grounded calls; above this we hit rate limits
+# 20 measured clean: 23 nodes in 49s (vs 131s at 5), and two roadmaps enriching at
+# once — 46 nodes, 40 simultaneous grounded calls — also finished in 50s with zero
+# failures. Wall clock barely moved between 23 and 46 nodes, so the limit here is
+# per-call latency, not throughput. Tune with ENRICH_WORKERS if a key is rate-limited.
+WORKERS = int(os.environ.get("ENRICH_WORKERS", "20"))
 _locks: dict[str, threading.Lock] = {}
 _guard = threading.Lock()
 
@@ -79,18 +83,29 @@ def enrich_all(rid):
         return
 
     done = 0
+    fails = []
     lock = threading.Lock()
+    t0 = time.time()
 
     def one(n):
         nonlocal done
+        err = None
         try:
             ensure(n["id"])
         except Exception as e:
-            print(f"[enrich] {n['id']}: {e}")
+            err = f"{type(e).__name__}: {e}"
+            print(f"[enrich] FAIL {n['id']}: {err}")
         with lock:
             done += 1
+            if err:
+                fails.append((n["id"], err))
             store.patch(rid, enriched=done)
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         list(pool.map(one, todo))
-    print(f"[enrich] {rid}: {done}/{len(todo)} steps researched")
+
+    ok = len(todo) - len(fails)
+    print(f"[enrich] {rid}: {ok}/{len(todo)} researched in {time.time()-t0:.0f}s "
+          f"({WORKERS} workers)" + (f" — {len(fails)} FAILED" if fails else ""))
+    return {"ok": ok, "failed": len(fails), "errors": fails,
+            "seconds": round(time.time() - t0)}
