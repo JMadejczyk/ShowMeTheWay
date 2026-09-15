@@ -48,6 +48,10 @@ function Workspace() {
 
   // Load an existing chat when ?chat= is present; otherwise start fresh.
   useEffect(() => {
+    // ensureChat() rewrites the URL mid-flow to give the new chat an address. That
+    // is not a navigation — without this guard the reset below wipes the goal and
+    // the background just extracted from the user's documents, and clarify runs blind.
+    if (chatId && chatId === cid.current) return;
     setMsgs([]); setOpen(null); setAttached(null); cid.current = chatId || null;
     st.current = { phase: 'goal', goal: '', background: '', qs: [], qi: 0, answers: [], rid: null };
     if (!chatId) return;
@@ -120,7 +124,6 @@ function Workspace() {
         remember('a', `Done — ${d.nodes.length} steps.`,
           { artifact: { id: d.id, title: d.title, n: d.nodes.length } });
         setOpen(d.id);
-        refresh();
       }
       s.phase = 'done';
       setBusy(false);
