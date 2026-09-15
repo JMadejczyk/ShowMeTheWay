@@ -179,6 +179,14 @@ def valid(s: S) -> str:
     return "structure" if s.get("attempts", 0) < 2 else "persist"
 
 
+def enrich(s: S) -> dict:
+    """Runs AFTER persist has marked the roadmap ready, so the canvas is already on
+    screen while the per-step research fills in behind it."""
+    from enrich import enrich_all
+    enrich_all(s["roadmap_id"])
+    return {}
+
+
 def persist(s: S) -> dict:
     store.save_graph(s["roadmap_id"], s.get("data") or {})
     store.patch(s["roadmap_id"], status="ready",
@@ -190,13 +198,14 @@ def persist(s: S) -> dict:
 
 def build():
     g = StateGraph(S)
-    for fn in (clarify, research, structure, persist):
+    for fn in (clarify, research, structure, persist, enrich):
         g.add_node(fn.__name__, fn)
     g.add_edge(START, "clarify")
     g.add_edge("clarify", "research")
     g.add_edge("research", "structure")
     g.add_conditional_edges("structure", valid, {"structure": "structure", "persist": "persist"})
-    g.add_edge("persist", END)
+    g.add_edge("persist", "enrich")
+    g.add_edge("enrich", END)
 
     path = os.path.join(os.path.dirname(__file__), "..", "checkpoints.db")
     cp = SqliteSaver(sqlite3.connect(path, check_same_thread=False))

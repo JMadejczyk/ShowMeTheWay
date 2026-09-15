@@ -13,6 +13,7 @@ from graph import GRAPH
 from replan import REPLAN
 from ask import ASK
 from converse import CONVERSE
+import enrich
 
 app = FastAPI(title="ShowMeTheWay")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -259,32 +260,12 @@ def node_act(b: NodeAct):
         n = store.node(b.id)
         if not n:
             return {"error": "no node"}
-        if n["detail"] and not b.force:
-            return {"detail": n["detail"], "sources": json.loads(n["sources"] or "[]"),
-                    "qa": store.qa_for_node(b.id)}
-
-        r = store.get(n["roadmap_id"])
-        text, srcs = llm.grounded(f"""Write a practical deep-dive for one step of someone's roadmap.
-Search the web for current, authoritative specifics.
-
-THEIR GOAL: {r['goal']}
-THEIR BACKGROUND: {r['background'] or '(not given)'}
-THIS STEP: {n['title']}
-CONTEXT: {n['summary']}
-
-Markdown, no H1. Cover, with headings:
-- What this actually is, and why it's on the path to their goal
-- What "done" looks like — the concrete bar they must clear
-- How to do it: named courses, providers, exams, books, official handbooks, with real
-  costs and realistic durations where you can find them
-- Pitfalls people hit at this step
-
-Given their background, calibrate the depth — skip what they'd obviously know.
-Take their stated background literally: do not credit them with any qualification,
-degree or diploma they did not claim, and do not infer one from their job title.
-Be concrete and specific. No filler, no motivational padding.""")
-        store.node_patch(b.id, detail=text, sources=json.dumps(srcs))
-        return {"detail": text, "sources": srcs, "qa": store.qa_for_node(b.id)}
+        try:
+            out = enrich.ensure(b.id, force=b.force)
+        except Exception as e:
+            traceback.print_exc()
+            return {"error": str(e)}
+        return {**out, "qa": store.qa_for_node(b.id)}
 
     if b.action == "ask":
         n = store.node(b.id)

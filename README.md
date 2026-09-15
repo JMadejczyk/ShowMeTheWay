@@ -148,3 +148,26 @@ was untouched.
 
 Chats and messages persist (`chat`, `message` tables), so Recent is real and a
 roadmap can carry several conversations.
+
+## Per-step research happens at creation, not on click
+
+`api/enrich.py` fills in every step's deep dive as part of the pipeline:
+
+    creation: clarify -> research -> structure -> persist -> enrich
+    replan:   split -> [delta] -> restructure -> merge -> enrich
+
+Timing is the design constraint. A deep dive is a grounded call (~30s) and a roadmap
+has 20-30 nodes, so sequentially this is ten minutes. Therefore:
+
+  * `persist` marks the roadmap ready BEFORE `enrich` runs, so the canvas still
+    appears at the same ~65s it always did;
+  * enrichment then runs on a 5-worker pool behind it, core spine first, since
+    those are the nodes anyone actually clicks;
+  * a node clicked before its turn still generates on demand — one lock per node id
+    means the eager pass and a click can never pay for the same generation twice.
+
+Measured on a fresh 23-node roadmap: ready at 65s, fully researched at 196s,
+211,366 chars of detail across 296 citations. Opening a node went from ~30s to 10ms.
+
+`enriched` / `enrich_total` on the roadmap drive a progress line in both artifact
+views; the UI keeps polling while they differ.

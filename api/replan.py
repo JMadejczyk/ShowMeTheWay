@@ -263,16 +263,25 @@ def _splice(s, rid, r, c):
     return {}
 
 
+def enrich(s: RS) -> dict:
+    """merge() has already flipped the roadmap back to ready, so the updated canvas
+    is on screen while the new steps get researched behind it."""
+    from enrich import enrich_all
+    enrich_all(s["roadmap_id"])
+    return {}
+
+
 def build():
     g = StateGraph(RS)
-    for fn in (split, delta, restructure, merge):
+    for fn in (split, delta, restructure, merge, enrich):
         g.add_node(fn.__name__, fn)
     g.add_edge(START, "split")
     g.add_conditional_edges("split", needs_delta,
                             {"delta": "delta", "restructure": "restructure"})
     g.add_edge("delta", "restructure")
     g.add_edge("restructure", "merge")
-    g.add_edge("merge", END)
+    g.add_edge("merge", "enrich")
+    g.add_edge("enrich", END)
     path = os.path.join(os.path.dirname(__file__), "..", "checkpoints.db")
     cp = SqliteSaver(sqlite3.connect(path, check_same_thread=False))
     cp.setup()

@@ -19,7 +19,8 @@ export default function ArtifactPage({ params }) {
   const loadChats = () => api('/api/chats?roadmap_id=' + id).then(d => Array.isArray(d) && setChats(d));
   useEffect(() => { load(); loadChats(); }, [id]);
   useEffect(() => {
-    if (!rm || rm.status === 'ready' || rm.status === 'error') return;
+    const enriching = rm && rm.enrich_total > 0 && rm.enriched < rm.enrich_total;
+    if (!rm || (!enriching && (rm.status === 'ready' || rm.status === 'error'))) return;
     const t = setInterval(load, 2500);
     return () => clearInterval(t);
   }, [rm?.status, id]);
@@ -71,6 +72,12 @@ export default function ArtifactPage({ params }) {
             <b>{cleared}/{rm.nodes.length}</b> cleared
             {known ? <span> · {known} you already had</span> : null}
           </div>
+          {rm.enrich_total > 0 && rm.enriched < rm.enrich_total && (
+            <div className="afenrich">
+              <div className="afbar"><i style={{ width: `${Math.round(100 * rm.enriched / rm.enrich_total)}%` }} /></div>
+              Researching steps · {rm.enriched}/{rm.enrich_total}
+            </div>
+          )}
 
           <div className="afsec">Chats about this</div>
           {chats.map(c => (

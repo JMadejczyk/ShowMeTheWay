@@ -20,7 +20,8 @@ def conn():
         CREATE TABLE IF NOT EXISTS roadmap(
           id TEXT PRIMARY KEY, title TEXT, goal TEXT, background TEXT,
           clarifications TEXT, questions TEXT, brief TEXT, sources TEXT,
-          status TEXT, error TEXT, created INTEGER);
+          status TEXT, error TEXT, created INTEGER,
+          enriched INTEGER DEFAULT 0, enrich_total INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS node(
           id TEXT PRIMARY KEY, roadmap_id TEXT, title TEXT, kind TEXT, track TEXT,
           summary TEXT, detail TEXT, sources TEXT, status TEXT, why_known TEXT,
@@ -35,6 +36,10 @@ def conn():
           id TEXT PRIMARY KEY, roadmap_id TEXT, node_id TEXT, q TEXT, a TEXT,
           sources TEXT, grounded INTEGER, created INTEGER);
         """)
+        # the roadmap table predates these columns; add them where missing
+        for col in ("enriched INTEGER DEFAULT 0", "enrich_total INTEGER DEFAULT 0"):
+            try: c.execute(f"ALTER TABLE roadmap ADD COLUMN {col}")
+            except sqlite3.OperationalError: pass
         c.commit()
         _local.c = c
     return c
@@ -45,7 +50,8 @@ jl  = lambda s, fb: (json.loads(s) if s else fb) or fb
 def create(goal, background, sources):
     rid = uid()
     conn().execute(
-        "INSERT INTO roadmap VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO roadmap (id,title,goal,background,clarifications,questions,"
+        "brief,sources,status,error,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (rid, "Untitled roadmap", goal, background or "", "[]", "[]", "", "[]",
          "clarifying", None, int(time.time() * 1000)))
     conn().commit()

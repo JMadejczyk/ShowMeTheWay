@@ -34,3 +34,6 @@
 .afsrc{display:block;font-size:12.5px;color:#0b57d0;text-decoration:none;padding:5px 0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:960px){ .afside{display:none} }
+.afenrich{margin-top:9px;font-size:12px;color:#5f6368}
+.afbar{height:3px;background:#e0e0e0;border-radius:3px;margin-bottom:6px;overflow:hidden}
+.afbar i{display:block;height:100%;background:#0b57d0;transition:width .4s}

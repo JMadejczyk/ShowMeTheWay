@@ -1,16 +1,24 @@
 """Native google-genai calls. LangGraph owns orchestration; this owns the model."""
-import os, json, re
+import os, json, re, threading
 from google import genai
 from google.genai import types
 
+# Lazy init must be locked. The enrichment pool starts five workers at once; each
+# saw _client as None, each built a Client, and the orphans were garbage-collected
+# and closed while threads were still using them — "Cannot send a request, as the
+# client has been closed", losing ~4 steps per roadmap.
 _client = None
+_init = threading.Lock()
+
 def client():
     global _client
     if _client is None:
-        key = os.environ.get("GEMINI_API_KEY")
-        if not key:
-            raise RuntimeError("GEMINI_API_KEY missing in .env.local")
-        _client = genai.Client(api_key=key)
+        with _init:
+            if _client is None:
+                key = os.environ.get("GEMINI_API_KEY")
+                if not key:
+                    raise RuntimeError("GEMINI_API_KEY missing in .env.local")
+                _client = genai.Client(api_key=key)
     return _client
 
 # Model selection.
@@ -26,16 +34,22 @@ _resolved: dict[str, str] = {}
 FALLBACK = "gemini-2.5-flash"
 
 
+_mlock = threading.Lock()
+
 def available() -> list[str]:
     global _avail
-    if _avail is None:
-        try:
-            _avail = [m.name.replace("models/", "") for m in client().models.list()
-                      if "generateContent" in (m.supported_actions or [])
-                      and not re.search(r"embedding|imagen|veo|tts|image|live|native-audio", m.name)]
-        except Exception as e:
-            print("[model] list failed:", e)
-            _avail = []
+    if _avail is not None:
+        return _avail
+    with _mlock:
+        if _avail is None:
+            try:
+                _avail = [m.name.replace("models/", "") for m in client().models.list()
+                          if "generateContent" in (m.supported_actions or [])
+                          and not re.search(
+                              r"embedding|imagen|veo|tts|image|live|native-audio", m.name)]
+            except Exception as e:
+                print("[model] list failed:", e)
+                _avail = []
     return _avail
 
 

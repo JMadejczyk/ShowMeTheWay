@@ -12,7 +12,8 @@ export default function Artifact({ id, onClose }) {
   const load = () => api('/api/roadmaps/' + id).then(setRm);
   useEffect(() => { setRm(null); setSel(null); load(); }, [id]);
   useEffect(() => {
-    if (!rm || rm.status === 'ready' || rm.status === 'error') return;
+    const enriching = rm && rm.enrich_total > 0 && rm.enriched < rm.enrich_total;
+    if (!rm || (!enriching && (rm.status === 'ready' || rm.status === 'error'))) return;
     const t = setInterval(load, 2500);
     return () => clearInterval(t);
   }, [rm?.status, id]);
@@ -30,6 +31,8 @@ export default function Artifact({ id, onClose }) {
         <span style={{ color: '#0b57d0', fontSize: 17 }}>◈</span>
         <b>{rm.title}</b>
         <span className="gtagline">{cleared}/{rm.nodes.length} cleared{known ? ` · ${known} you already had` : ''}</span>
+        {rm.enrich_total > 0 && rm.enriched < rm.enrich_total &&
+          <span className="gtagline">researching {rm.enriched}/{rm.enrich_total}</span>}
         <span className="gsaved">✓ Saved to Drive</span>
         <button className="gicon" onClick={onClose}>✕</button>
       </div>
